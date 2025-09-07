@@ -21,8 +21,14 @@ this document is not final and will expand over time. feel free to improve it!
 | name                | default   | value example                         |
 |:--------------------|:----------|:--------------------------------------|
 | API_LISTEN_ADDRESS  | `0.0.0.0` | `127.0.0.1`                           |
-| API_EXTERNAL_PROXY  |           | `http://user:password@127.0.0.1:8080` |
 | FREEBIND_CIDR       |           | `2001:db8::/32`                       |
+
+#### undici proxy vars
+| name        | value example                         |
+|:------------|:--------------------------------------|
+| HTTP_PROXY  | `http://user:password@10.0.0.1:1337/` |
+| HTTPS_PROXY | `https://10.0.0.2:1337/`              |
+| NO_PROXY    | `localhost`                           |
 
 [*view details*](#networking)
 
@@ -34,9 +40,9 @@ this document is not final and will expand over time. feel free to improve it!
 | RATELIMIT_WINDOW         | `60`    | `120`         |
 | RATELIMIT_MAX            | `20`    | `30`          |
 | SESSION_RATELIMIT_WINDOW | `60`    | `60`          |
-| SESSION_RATELIMIT        | `10`    | `10`          |
+| SESSION_RATELIMIT_MAX    | `10`    | `10`          |
 | TUNNEL_RATELIMIT_WINDOW  | `60`    | `60`          |
-| TUNNEL_RATELIMIT         | `40`    | `10`          |
+| TUNNEL_RATELIMIT_MAX     | `40`    | `10`          |
 
 [*view details*](#limits)
 
@@ -61,6 +67,7 @@ this document is not final and will expand over time. feel free to improve it!
 | YOUTUBE_SESSION_SERVER           | `http://localhost:8080/` |
 | YOUTUBE_SESSION_INNERTUBE_CLIENT | `WEB_EMBEDDED`           |
 | YOUTUBE_ALLOW_BETTER_AUDIO       | `1`                      |
+| ENABLE_DEPRECATED_YOUTUBE_HLS    | `key`                    |
 
 [*view details*](#service-specific)
 
@@ -106,11 +113,10 @@ comma-separated list which disables certain services from being used.
 the value is a string of cobalt-supported services.
 
 ### FORCE_LOCAL_PROCESSING
-the value is a string: `never` (default), `session`, or `always`.
-
-when set to `session`, only requests from session (Bearer token) clients will be forced to use on-device processing.
-
-when set to `always`, all requests will be forced to use on-device processing, no matter the preference.
+the value is a string: `never` (default), `session`, or `always`:
+- when the var is not defined or set to `never`, all requests will be able to set a preference via `localProcessing` in POST requests.
+- when set to `session`, only requests from session (Bearer token) clients will be forced to use on-device processing.
+- when set to `always`, all requests will be forced to use on-device processing, no matter the preference.
 
 ### API_ENV_FILE
 the URL or local path to a `key=value`-style environment variable file. this is used for dynamically reloading environment variables. **not all environment variables are able to be updated by this.** (e.g. the ratelimiters are instantiated when starting cobalt, and cannot be changed)
@@ -123,10 +129,23 @@ defines the local address for the api instance. if you are using a docker contai
 
 the value is a local IP address.
 
-### API_EXTERNAL_PROXY
-URL of the proxy that will be passed to [`ProxyAgent`](https://undici.nodejs.org/#/docs/api/ProxyAgent) and used for all external requests. HTTP(S) only.
+### HTTP_PROXY, HTTPS_PROXY, NO_PROXY
+URL of the proxy that will be passed to [`EnvHttpProxyAgent`](https://undici.nodejs.org/#/docs/api/EnvHttpProxyAgent) for proxying external requests. if some cobalt functionality breaks when using a proxy, please [make a new issue](https://github.com/imputnet/cobalt/issues) about it!
 
-if some feature breaks when using a proxy, please make a new issue about it!
+quoted from [undici docs](https://undici.nodejs.org/#/docs/api/EnvHttpProxyAgent):
+> When `HTTP_PROXY` and `HTTPS_PROXY` are set, `HTTP_PROXY` is used for HTTP requests and `HTTPS_PROXY` is used for HTTPS requests. If only `HTTP_PROXY` is set, `HTTP_PROXY` is used for both HTTP and HTTPS requests. If only `HTTPS_PROXY` is set, it is only used for HTTPS requests.
+
+> `NO_PROXY` is a comma or space-separated list of hostnames that should not be proxied. The list may contain leading wildcard characters (`*`). If `NO_PROXY` is set, the EnvHttpProxyAgent() will bypass the proxy for requests to hosts that match the list. If `NO_PROXY` is set to `"*"`, the EnvHttpProxyAgent() will bypass the proxy for all requests.
+
+the value is a string:
+- `HTTP_PROXY`/`HTTPS_PROXY`: URL or hostname.
+- `NO_PROXY`: comma or space-separated list of hostnames.
+
+### API_EXTERNAL_PROXY (deprecated)
+> [!WARNING]
+> this env variable is deprecated and will be removed in a future release. please update your configuration to use `HTTP_PROXY` or `HTTPS_PROXY`, as mentioned above.
+
+URL of the proxy that will be passed to [`EnvHttpProxyAgent`](https://undici.nodejs.org/#/docs/api/EnvHttpProxyAgent) and used for proxying external requests. HTTP(S) only.
 
 the value is a URL.
 
@@ -171,7 +190,7 @@ rate limit time window for session creation requests, in **seconds**.
 
 the value is a number.
 
-### SESSION_RATELIMIT
+### SESSION_RATELIMIT_MAX
 amount of session requests to be allowed within the time window of `SESSION_RATELIMIT_WINDOW`.
 
 the value is a number.
@@ -181,7 +200,7 @@ rate limit time window for tunnel (proxy/stream) requests, in **seconds**.
 
 the value is a number.
 
-### TUNNEL_RATELIMIT
+### TUNNEL_RATELIMIT_MAX
 amount of tunnel requests to be allowed within the time window of `TUNNEL_RATELIMIT_WINDOW`.
 
 the value is a number.
@@ -256,3 +275,9 @@ the value is a string.
 when set to `1`, cobalt will try to use higher quality audio if user requests it via `youtubeBetterAudio`. will negatively impact the rate limit of a secondary youtube client with a session.
 
 the value is a number, either `0` or `1`.
+
+### ENABLE_DEPRECATED_YOUTUBE_HLS
+the value is a string: `never` (default), `key`, or `always`:
+- when the var is not defined or set to `never`, `youtubeHLS` in POST requests will be ignored.
+- when set to `key`, only requests from api-key clients will be able to use `youtubeHLS` in POST requests.
+- when set to `always`, all requests will be able to use `youtubeHLS` in POST requests.

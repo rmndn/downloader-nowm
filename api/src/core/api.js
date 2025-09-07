@@ -1,7 +1,7 @@
 import cors from "cors";
 import http from "node:http";
 import rateLimit from "express-rate-limit";
-import { setGlobalDispatcher, ProxyAgent } from "undici";
+import { setGlobalDispatcher, EnvHttpProxyAgent } from "undici";
 import { getCommit, getBranch, getRemote, getVersion } from "@imput/version-info";
 
 import jwt from "../security/jwt.js";
@@ -156,6 +156,7 @@ export const runAPI = async (express, app, __dirname, isPrimary = true) => {
             return fail(res, `error.api.auth.key.${error}`);
         }
 
+        req.authType = "key";
         return next();
     });
 
@@ -184,7 +185,7 @@ export const runAPI = async (express, app, __dirname, isPrimary = true) => {
             }
 
             req.rateLimitKey = hashHmac(token, 'rate');
-            req.isSession = true;
+            req.authType = "session";
         } catch {
             return fail(res, "error.api.generic");
         }
@@ -244,7 +245,10 @@ export const runAPI = async (express, app, __dirname, isPrimary = true) => {
             return fail(res, "error.api.invalid_body");
         }
 
-        const parsed = extract(normalizedRequest.url);
+        const parsed = extract(
+            normalizedRequest.url,
+            APIKeys.getAllowedServices(req.rateLimitKey),
+        );
 
         if (!parsed) {
             return fail(res, "error.api.link.invalid");
@@ -263,7 +267,7 @@ export const runAPI = async (express, app, __dirname, isPrimary = true) => {
                 host: parsed.host,
                 patternMatch: parsed.patternMatch,
                 params: normalizedRequest,
-                isSession: req.isSession ?? false,
+                authType: req.authType ?? "none",
             });
 
             res.status(result.status).json(result.body);
@@ -333,9 +337,17 @@ export const runAPI = async (express, app, __dirname, isPrimary = true) => {
     randomizeCiphers();
     setInterval(randomizeCiphers, 1000 * 60 * 30); // shuffle ciphers every 30 minutes
 
-    if (env.externalProxy) {
-        setGlobalDispatcher(new ProxyAgent(env.externalProxy))
-    }
+    env.subscribe(['externalProxy', 'httpProxyValues'], () => {
+        // TODO: remove env.externalProxy in a future version
+        const options = {};
+        if (env.externalProxy) {
+            options.httpProxy = env.externalProxy;
+        }
+
+        setGlobalDispatcher(
+            new EnvHttpProxyAgent(options)
+        );
+    });
 
     http.createServer(app).listen({
         port: env.apiPort,
